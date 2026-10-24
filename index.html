@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Number Base Conversion Riddle Challenge</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .bit-on { background: #22c55e; color: white; }
+  .bit-off { background: #374151; color: #6b7280; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+  .shake { animation: shake 0.3s ease; }
+  @keyframes pulse-correct { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+  .correct-pulse { animation: pulse-correct 0.3s ease; }
+</style>
+</head>
+<body class="bg-gray-950 min-h-screen text-white">
+<div class="max-w-xl mx-auto p-4">
+  <header class="mb-4 text-center">
+    <h1 class="text-2xl font-bold text-green-400">Number Base Riddle Challenge</h1>
+    <p class="text-gray-500 text-sm mt-1">Convert between binary, octal, hex, and decimal — beat the clock!</p>
+  </header>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-4 gap-2 mb-4">
+    <div class="bg-gray-800 rounded-xl p-3 text-center">
+      <div class="text-xl font-bold text-green-400" id="streak">0</div>
+      <div class="text-xs text-gray-500">Streak</div>
+    </div>
+    <div class="bg-gray-800 rounded-xl p-3 text-center">
+      <div class="text-xl font-bold text-yellow-400" id="level">1</div>
+      <div class="text-xs text-gray-500">Level</div>
+    </div>
+    <div class="bg-gray-800 rounded-xl p-3 text-center">
+      <div class="text-xl font-bold text-blue-400" id="totalScore">0</div>
+      <div class="text-xs text-gray-500">Score</div>
+    </div>
+    <div class="bg-gray-800 rounded-xl p-3 text-center">
+      <div class="text-xl font-bold" id="timer">15</div>
+      <div class="text-xs text-gray-500">Seconds</div>
+    </div>
+  </div>
+
+  <!-- Timer Bar -->
+  <div class="bg-gray-800 rounded-full h-3 mb-5">
+    <div id="timerBar" class="bg-green-400 h-3 rounded-full transition-all duration-1000" style="width:100%"></div>
+  </div>
+
+  <!-- Question Card -->
+  <div id="questionCard" class="bg-gray-800 rounded-2xl p-6 mb-4 shadow-xl">
+    <div class="text-xs text-gray-500 uppercase tracking-wider mb-2" id="questionType"></div>
+    <div class="text-4xl font-black text-center tracking-widest mb-1" id="questionValue"></div>
+    <div class="text-center text-gray-400 text-sm" id="questionFromBase"></div>
+  </div>
+
+  <!-- Binary Grid (hint) -->
+  <div id="binarySection" class="hidden mb-4">
+    <div class="text-xs text-gray-500 mb-2 flex justify-between">
+      <span>Bit grid (click to flip)</span>
+      <button onclick="clearBits()" class="text-xs text-gray-500 hover:text-white">Clear</button>
+    </div>
+    <div id="bitGrid" class="flex gap-2 justify-center flex-wrap mb-2"></div>
+    <div class="text-center text-sm text-gray-400">Decimal value: <span id="bitDecimal" class="text-green-400 font-mono font-bold">0</span></div>
+  </div>
+
+  <!-- Answer Input -->
+  <div class="flex gap-2 mb-4">
+    <input id="answerInput" type="text" placeholder="Enter decimal value..."
+      class="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-xl font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+      aria-label="Your answer" autocomplete="off">
+    <button onclick="submitAnswer()" class="bg-green-600 hover:bg-green-500 px-6 py-3 rounded-xl font-bold transition">Go</button>
+    <button onclick="showHint()" id="hintBtn" class="bg-gray-700 hover:bg-gray-600 px-4 py-3 rounded-xl text-sm transition">Hint</button>
+  </div>
+
+  <!-- Feedback -->
+  <div id="feedback" class="hidden rounded-xl p-4 mb-4 text-sm" aria-live="polite"></div>
+
+  <!-- Explanation -->
+  <div id="explanation" class="hidden bg-gray-800 rounded-xl p-4 text-sm mb-4">
+    <div class="text-xs text-gray-500 uppercase mb-2">Conversion Steps</div>
+    <div id="explanationText" class="font-mono text-green-300 leading-relaxed"></div>
+  </div>
+
+  <button id="nextBtn" onclick="nextQuestion()" class="hidden w-full bg-green-600 hover:bg-green-500 font-bold py-3 rounded-xl transition">Next Challenge →</button>
+
+  <!-- Game Over -->
+  <div id="gameOver" class="hidden text-center">
+    <div class="text-4xl mb-3">⏱️</div>
+    <div class="text-2xl font-bold text-red-400 mb-2">Time's Up!</div>
+    <div class="text-gray-300 mb-4">Final Score: <span id="finalScore" class="text-yellow-400 font-bold text-2xl"></span></div>
+    <button onclick="restartGame()" class="bg-green-600 hover:bg-green-500 px-8 py-3 rounded-xl font-bold transition">Play Again</button>
+  </div>
+</div>
+
+<script>
+let streak = 0, level = 1, totalScore = 0;
+let currentQ = null, answered = false;
+let timerVal = 15, timerInterval = null;
+let userBits = [];
+
+function getBitCount() { return level <= 2 ? 8 : level <= 4 ? 8 : 12; }
+
+function genQuestion() {
+  const maxVal = Math.min(16 * Math.pow(2, level - 1), level <= 3 ? 255 : level <= 5 ? 1023 : 4095);
+  const val = Math.floor(Math.random() * (maxVal - 1)) + 1;
+
+  // Choose type based on level
+  let types;
+  if (level <= 1) types = ['bin_to_dec'];
+  else if (level <= 2) types = ['bin_to_dec', 'dec_to_bin'];
+  else if (level <= 3) types = ['bin_to_dec', 'dec_to_bin', 'hex_to_dec'];
+  else types = ['bin_to_dec', 'dec_to_bin', 'hex_to_dec', 'dec_to_hex', 'oct_to_dec'];
+  const type = types[Math.floor(Math.random() * types.length)];
+
+  let question = { val, type };
+  if (type === 'bin_to_dec') {
+    question.display = val.toString(2).padStart(getBitCount() > 8 ? 12 : 8, '0');
+    question.fromBase = 'Binary (base 2) → Decimal';
+    question.answer = String(val);
+    question.direction = 'to_dec';
+  } else if (type === 'dec_to_bin') {
+    question.display = String(val);
+    question.fromBase = 'Decimal → Binary (base 2)';
+    question.answer = val.toString(2);
+    question.direction = 'from_dec';
+    document.getElementById('answerInput').placeholder = 'Enter binary (e.g. 1010)';
+  } else if (type === 'hex_to_dec') {
+    question.display = '0x' + val.toString(16).toUpperCase();
+    question.fromBase = 'Hexadecimal (base 16) → Decimal';
+    question.answer = String(val);
+    question.direction = 'to_dec';
+  } else if (type === 'dec_to_hex') {
+    question.display = String(val);
+    question.fromBase = 'Decimal → Hexadecimal (base 16)';
+    question.answer = val.toString(16).toUpperCase();
+    question.direction = 'from_dec';
+    document.getElementById('answerInput').placeholder = 'Enter hex (e.g. 1F)';
+  } else if (type === 'oct_to_dec') {
+    question.display = '0o' + val.toString(8);
+    question.fromBase = 'Octal (base 8) → Decimal';
+    question.answer = String(val);
+    question.direction = 'to_dec';
+  }
+
+  return question;
+}
+
+function showBitGrid(val) {
+  const bits = getBitCount();
+  userBits = Array(bits).fill(0);
+  const grid = document.getElementById('bitGrid');
+  grid.innerHTML = Array.from({length:bits}, (_,i) => {
+    const bitVal = Math.pow(2, bits-1-i);
+    return `<div class="bit-off rounded p-1 text-center cursor-pointer select-none transition"
+      onclick="toggleBit(${i})" style="min-width:36px" data-bit="${i}" aria-label="Bit ${bits-1-i} value ${bitVal}">
+      <div class="text-xs opacity-60">${bitVal >= 1000 ? bitVal : bitVal < 10 ? '  '+bitVal : bitVal < 100 ? ' '+bitVal : bitVal}</div>
+      <div class="font-bold text-lg">0</div>
+    </div>`;
+  }).join('');
+  updateBitDecimal();
+}
+
+function toggleBit(i) {
+  if (answered) return;
+  userBits[i] = 1 - userBits[i];
+  const bits = document.querySelectorAll('[data-bit]');
+  bits[i].className = userBits[i] ? 'bit-on rounded p-1 text-center cursor-pointer select-none transition' : 'bit-off rounded p-1 text-center cursor-pointer select-none transition';
+  bits[i].querySelector('.font-bold').textContent = userBits[i];
+  updateBitDecimal();
+}
+
+function updateBitDecimal() {
+  const val = userBits.reduce((acc, b, i) => acc + b * Math.pow(2, userBits.length-1-i), 0);
+  document.getElementById('bitDecimal').textContent = val;
+}
+
+function clearBits() {
+  const bits = getBitCount();
+  userBits = Array(bits).fill(0);
+  document.querySelectorAll('[data-bit]').forEach((el, i) => {
+    el.className = 'bit-off rounded p-1 text-center cursor-pointer select-none transition';
+    el.querySelector('.font-bold').textContent = '0';
+  });
+  updateBitDecimal();
+}
+
+function nextQuestion() {
+  answered = false;
+  document.getElementById('feedback').classList.add('hidden');
+  document.getElementById('explanation').classList.add('hidden');
+  document.getElementById('nextBtn').classList.add('hidden');
+  document.getElementById('hintBtn').disabled = false;
+  document.getElementById('answerInput').placeholder = 'Enter decimal value...';
+
+  currentQ = genQuestion();
+  document.getElementById('questionType').textContent = `Level ${level} Challenge`;
+  document.getElementById('questionValue').textContent = currentQ.display;
+  document.getElementById('questionFromBase').textContent = currentQ.fromBase;
+  document.getElementById('answerInput').value = '';
+  document.getElementById('answerInput').focus();
+
+  // Binary hint section
+  const isBinary = currentQ.type === 'bin_to_dec';
+  document.getElementById('binarySection').classList.toggle('hidden', !isBinary);
+  if (isBinary) showBitGrid(0);
+
+  resetTimer();
+}
+
+function startTimer() {
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timerVal--;
+    document.getElementById('timer').textContent = timerVal;
+    const pct = timerVal / 15 * 100;
+    const bar = document.getElementById('timerBar');
+    bar.style.width = pct + '%';
+    bar.className = `h-3 rounded-full transition-all duration-1000 ${timerVal > 8 ? 'bg-green-400' : timerVal > 4 ? 'bg-yellow-400' : 'bg-red-500'}`;
+    document.getElementById('timer').className = `text-xl font-bold ${timerVal <= 5 ? 'text-red-400' : 'text-blue-400'}`;
+
+    if (timerVal <= 0) {
+      clearInterval(timerInterval);
+      if (!answered) timeUp();
+    }
+  }, 1000);
+}
+
+function resetTimer() {
+  clearInterval(timerInterval);
+  timerVal = 15;
+  document.getElementById('timer').textContent = 15;
+  document.getElementById('timerBar').style.width = '100%';
+  document.getElementById('timerBar').className = 'bg-green-400 h-3 rounded-full transition-all duration-1000';
+  document.getElementById('timer').className = 'text-xl font-bold text-blue-400';
+  startTimer();
+}
+
+function timeUp() {
+  answered = true;
+  streak = 0;
+  document.getElementById('streak').textContent = 0;
+  showExplanation(currentQ);
+  const feedEl = document.getElementById('feedback');
+  feedEl.innerHTML = `⏱️ Time's up! The answer was <strong class="text-yellow-300">${currentQ.answer}</strong>`;
+  feedEl.className = 'rounded-xl p-4 mb-4 text-sm bg-red-900 text-red-100';
+  feedEl.classList.remove('hidden');
+  document.getElementById('finalScore').textContent = totalScore;
+  document.getElementById('gameOver').classList.remove('hidden');
+  document.getElementById('nextBtn').classList.add('hidden');
+}
+
+function submitAnswer() {
+  if (answered) return;
+  const raw = document.getElementById('answerInput').value.trim().toUpperCase().replace(/^0X/,'').replace(/^0O/,'').replace(/^0B/,'');
+  if (!raw) return;
+
+  const correct = currentQ.answer.toUpperCase();
+  const isCorrect = raw === correct;
+
+  clearInterval(timerInterval);
+  answered = true;
+
+  if (isCorrect) {
+    streak++; totalScore += streak + level;
+    if (streak > 0 && streak % 3 === 0) level = Math.min(level + 1, 8);
+    document.getElementById('streak').textContent = streak;
+    document.getElementById('level').textContent = level;
+    document.getElementById('totalScore').textContent = totalScore;
+
+    const feedEl = document.getElementById('feedback');
+    feedEl.innerHTML = `✓ Correct! <strong class="text-green-300">+${streak + level} pts</strong> — Streak: ${streak} 🔥`;
+    feedEl.className = 'rounded-xl p-4 mb-4 text-sm bg-green-900 text-green-100 correct-pulse';
+    feedEl.classList.remove('hidden');
+  } else {
+    streak = 0;
+    document.getElementById('streak').textContent = 0;
+    document.getElementById('questionCard').classList.add('shake');
+    setTimeout(() => document.getElementById('questionCard').classList.remove('shake'), 400);
+
+    const feedEl = document.getElementById('feedback');
+    feedEl.innerHTML = `✗ Wrong. The correct answer is <strong class="text-yellow-300">${currentQ.answer}</strong>`;
+    feedEl.className = 'rounded-xl p-4 mb-4 text-sm bg-red-900 text-red-100';
+    feedEl.classList.remove('hidden');
+    showExplanation(currentQ);
+  }
+  document.getElementById('nextBtn').classList.remove('hidden');
+}
+
+function showHint() {
+  document.getElementById('hintBtn').disabled = true;
+  document.getElementById('binarySection').classList.remove('hidden');
+  if (!document.getElementById('bitGrid').children.length) showBitGrid(0);
+}
+
+function showExplanation(q) {
+  let text = '';
+  if (q.type === 'bin_to_dec' || q.type === 'dec_to_bin') {
+    const bits = q.val.toString(2).padStart(8,'0');
+    const steps = bits.split('').reverse().map((b,i) => b === '1' ? `${b}×2^${i}(=${Math.pow(2,i)})` : null).filter(Boolean);
+    text = `${q.val} decimal = ${bits} binary\n${steps.reverse().join(' + ')} = ${q.val}`;
+  } else if (q.type === 'hex_to_dec' || q.type === 'dec_to_hex') {
+    const hex = q.val.toString(16).toUpperCase();
+    const steps = hex.split('').reverse().map((h,i) => {
+      const d = parseInt(h,16);
+      return `${h}(${d})×16^${i}(=${Math.pow(16,i)})=${d*Math.pow(16,i)}`;
+    }).reverse();
+    text = `${hex} hex = ${q.val} decimal\n${steps.join('\n+ ')}`;
+  } else if (q.type === 'oct_to_dec') {
+    const oct = q.val.toString(8);
+    text = `${oct} octal = ${q.val} decimal`;
+  }
+  document.getElementById('explanationText').textContent = text;
+  document.getElementById('explanation').classList.remove('hidden');
+}
+
+function restartGame() {
+  streak = 0; level = 1; totalScore = 0;
+  document.getElementById('streak').textContent = 0;
+  document.getElementById('level').textContent = 1;
+  document.getElementById('totalScore').textContent = 0;
+  document.getElementById('gameOver').classList.add('hidden');
+  nextQuestion();
+}
+
+document.getElementById('answerInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { if (!answered) submitAnswer(); else nextQuestion(); }
+});
+
+nextQuestion();
+</script>
+</body>
+</html>
